@@ -143,6 +143,34 @@ rules = RuleConfig(
 # Ambiguous dates (MM/DD/YY) fall back to LLM; ISO dates are trusted
 ```
 
+### Rule Evaluation Order
+
+Rules are evaluated **in list order**. The first rule that hits *and* meets the
+confidence threshold wins — later rules are not evaluated.
+
+When `fallback_on_low_confidence=True`, a rule that hits below `min_confidence`
+is **skipped** and evaluation continues to the next rule. If no subsequent rule
+produces a confident hit, the prompt falls through to the LLM.
+
+This means rule ordering matters:
+
+1. Place **high-confidence, specific** rules first (e.g. ISO dates).
+2. Follow with **lower-confidence, broader** rules (e.g. ambiguous date formats).
+3. The LLM acts as the final catch-all.
+
+```python
+rules = RuleConfig(
+    rules=[
+        RegexRule(r"(?P<date>\d{4}-\d{2}-\d{2})", confidence=1.0),   # ① specific
+        RegexRule(r"(?P<date>\d{1,2}/\d{1,2}/\d{2,4})", confidence=0.6),  # ② broad
+    ],
+    fallback_on_low_confidence=True,
+    min_confidence=0.8,
+)
+# "2026-01-15" → rule ① (confidence 1.0 ≥ 0.8) → instant result
+# "1/15/26"   → rule ① miss, rule ② hit (0.6 < 0.8) → LLM fallback
+```
+
 ### Async Usage
 
 The async path is batch-optimised — only prompts that miss all rules are sent to the LLM in a single batch:
@@ -158,11 +186,19 @@ results = await hybrid_model.async_infer([
 
 ## Observability
 
-Counters are thread-safe and can be read from any thread:
+Counters are **per-instance** and **cumulative** — they track totals since
+the provider was created (or last reset).  In long-running applications
+where a single `HybridLanguageModel` handles unrelated jobs, call
+`reset_counters()` between jobs or use `get_counters()` to take
+point-in-time snapshots for differential reporting.
 
 ```python
 print(f"Rule hits: {hybrid_model.rule_hits}")
 print(f"LLM fallbacks: {hybrid_model.llm_fallbacks}")
+
+# Atomic snapshot (thread-safe dict copy)
+snapshot = hybrid_model.get_counters()
+# {"rule_hits": 42, "llm_fallbacks": 7}
 
 # Reset counters (also thread-safe)
 hybrid_model.reset_counters()

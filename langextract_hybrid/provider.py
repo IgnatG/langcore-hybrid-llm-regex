@@ -113,6 +113,21 @@ class HybridLanguageModel(BaseLanguageModel):
             self._rule_hits = 0
             self._llm_fallbacks = 0
 
+    def get_counters(self) -> dict[str, int]:
+        """Return a snapshot of the current counters.
+
+        The returned dict is a copy and will not change when the
+        counters are subsequently updated.
+
+        Returns:
+            A dict with ``rule_hits`` and ``llm_fallbacks`` keys.
+        """
+        with self._counter_lock:
+            return {
+                "rule_hits": self._rule_hits,
+                "llm_fallbacks": self._llm_fallbacks,
+            }
+
     # -- Private helpers --
 
     def _try_rules(self, prompt: str) -> RuleResult:

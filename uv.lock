@@ -840,8 +840,8 @@ wheels = [
 ]
 
 [[package]]
-name = "langextract-hybrid"
-version = "1.0.2"
+name = "langextract-hybrid-llm-regex"
+version = "1.0.3"
 source = { editable = "." }
 dependencies = [
     { name = "langextract-core" },

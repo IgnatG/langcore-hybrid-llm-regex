@@ -287,6 +287,26 @@ class TestHybridProviderSync:
         assert hybrid.rule_hits == 0
         assert hybrid.llm_fallbacks == 0
 
+    def test_get_counters_returns_snapshot(self) -> None:
+        """get_counters() must return a frozen snapshot that is not
+        affected by subsequent counter updates."""
+        llm = _StubLLM()
+        rule = RegexRule(r"MATCH:\s*(?P<val>\w+)")
+        hybrid = HybridLanguageModel(
+            model_id="hybrid/test",
+            inner=llm,
+            rule_config=RuleConfig(rules=[rule]),
+        )
+        list(hybrid.infer(["MATCH: hello", "no match"]))
+        snapshot = hybrid.get_counters()
+        assert snapshot == {"rule_hits": 1, "llm_fallbacks": 1}
+
+        # Subsequent calls should not mutate the snapshot
+        list(hybrid.infer(["MATCH: world"]))
+        assert snapshot == {"rule_hits": 1, "llm_fallbacks": 1}
+        # But live counters advanced
+        assert hybrid.rule_hits == 2
+
     def test_counters_thread_safe(self) -> None:
         """Rule-hit and LLM-fallback counters must be accurate when
         the provider is used from multiple threads simultaneously."""

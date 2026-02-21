@@ -3,7 +3,7 @@ requires = ["setuptools>=82.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "langextract-hybrid"
+name = "langextract-hybrid-llm-regex"
 version = "1.0.3"
 description = "LangExtract hybrid provider — combines deterministic rule/regex extraction with LLM fallback for cost savings"
 readme = "README.md"
