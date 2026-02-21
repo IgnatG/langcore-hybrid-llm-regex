@@ -287,6 +287,45 @@ class TestHybridProviderSync:
         assert hybrid.rule_hits == 0
         assert hybrid.llm_fallbacks == 0
 
+    def test_counters_thread_safe(self) -> None:
+        """Rule-hit and LLM-fallback counters must be accurate when
+        the provider is used from multiple threads simultaneously."""
+        import threading
+
+        rule = RegexRule(r"MATCH:\s*(?P<val>\w+)")
+        llm = _StubLLM()
+        hybrid = HybridLanguageModel(
+            model_id="hybrid/test",
+            inner=llm,
+            rule_config=RuleConfig(rules=[rule]),
+        )
+
+        n_threads = 20
+        errors: list[Exception] = []
+
+        def run_infer(match: bool) -> None:
+            try:
+                prompt = "MATCH: hello" if match else "no match here"
+                list(hybrid.infer([prompt]))
+            except (
+                Exception
+            ) as exc:  # broad catch intentional for thread error collection
+                errors.append(exc)
+
+        threads = [
+            threading.Thread(target=run_infer, args=(i % 2 == 0,))
+            for i in range(n_threads)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, f"Thread errors: {errors}"
+        assert hybrid.rule_hits + hybrid.llm_fallbacks == n_threads
+        assert hybrid.rule_hits == n_threads // 2
+        assert hybrid.llm_fallbacks == n_threads // 2
+
     def test_empty_rules_always_falls_back(self) -> None:
         llm = _StubLLM()
         hybrid = HybridLanguageModel(

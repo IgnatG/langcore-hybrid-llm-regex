@@ -28,6 +28,9 @@ pip install -e ".[spacy]"
 - **Confidence thresholds** — optionally fall back to LLM when rule confidence is low
 - **Batch-aware async** — only prompts that miss all rules are batched for LLM inference
 - **Observability** — built-in counters for rule hits vs LLM fallbacks
+- **Thread-safe counters** — rule-hit and LLM-fallback counters are protected by a lock for safe concurrent use
+- **Text extractor hook** — optional `text_extractor` callable in `RuleConfig` isolates document text from prompt instructions before rule evaluation
+- **Output formatter hook** — optional `output_formatter` callable in `RuleConfig` normalises rule outputs (e.g. wrap in JSON)
 - **Zero overhead on hits** — rule evaluation is pure Python, no network calls
 
 ## Usage
@@ -155,12 +158,45 @@ results = await hybrid_model.async_infer([
 
 ## Observability
 
+Counters are thread-safe and can be read from any thread:
+
 ```python
 print(f"Rule hits: {hybrid_model.rule_hits}")
 print(f"LLM fallbacks: {hybrid_model.llm_fallbacks}")
 
-# Reset counters
+# Reset counters (also thread-safe)
 hybrid_model.reset_counters()
+```
+
+### Text Extractor
+
+When prompts contain instructions followed by document text, rules may match
+instruction fragments by mistake.  Use `text_extractor` to isolate the document:
+
+```python
+def extract_after_marker(prompt: str) -> str:
+    """Return text after '---DOCUMENT---' marker."""
+    marker = "---DOCUMENT---"
+    idx = prompt.find(marker)
+    return prompt[idx + len(marker) :].strip() if idx >= 0 else prompt
+
+rules = RuleConfig(
+    rules=[RegexRule(r"Date:\s*(?P<date>\d{4}-\d{2}-\d{2})")],
+    text_extractor=extract_after_marker,
+)
+```
+
+### Output Formatter
+
+Normalise rule outputs for downstream consumers:
+
+```python
+import json
+
+rules = RuleConfig(
+    rules=[RegexRule(r"Ref:\s*(?P<ref>[A-Z]+-\d+)")],
+    output_formatter=lambda raw: json.dumps({"result": json.loads(raw)}),
+)
 ```
 
 ## Custom Rules

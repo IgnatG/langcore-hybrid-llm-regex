@@ -9,6 +9,7 @@ confidence, the prompt falls back to the wrapped LLM provider.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import TYPE_CHECKING, Any
 
 import langextract as lx
@@ -61,7 +62,10 @@ class HybridLanguageModel(BaseLanguageModel):
         self._inner = inner
         self._rule_config = rule_config
 
-        # Counters for observability
+        # Counters for observability — guarded by a lock so they
+        # remain accurate when the provider is shared across threads
+        # or concurrent async tasks.
+        self._counter_lock = threading.Lock()
         self._rule_hits: int = 0
         self._llm_fallbacks: int = 0
 
@@ -105,8 +109,9 @@ class HybridLanguageModel(BaseLanguageModel):
 
     def reset_counters(self) -> None:
         """Reset the hit/fallback counters to zero."""
-        self._rule_hits = 0
-        self._llm_fallbacks = 0
+        with self._counter_lock:
+            self._rule_hits = 0
+            self._llm_fallbacks = 0
 
     # -- Private helpers --
 
@@ -184,7 +189,8 @@ class HybridLanguageModel(BaseLanguageModel):
             rule_result = self._try_rules(prompt)
 
             if rule_result.hit:
-                self._rule_hits += 1
+                with self._counter_lock:
+                    self._rule_hits += 1
                 logger.debug("Rule hit for prompt — skipping LLM")
                 yield [
                     ScoredOutput(
@@ -193,20 +199,16 @@ class HybridLanguageModel(BaseLanguageModel):
                     )
                 ]
             else:
-                self._llm_fallbacks += 1
+                with self._counter_lock:
+                    self._llm_fallbacks += 1
                 logger.debug("Rule miss — falling back to LLM")
                 # Delegate to the inner provider for this single
-                # prompt
-                results = list(self._inner.infer([prompt], **kwargs))
-                if results:
-                    yield results[0]
-                else:
-                    yield [
-                        ScoredOutput(
-                            score=0.0,
-                            output="",
-                        )
-                    ]
+                # prompt — use next() to avoid materialising the
+                # full results list.
+                first = next(self._inner.infer([prompt], **kwargs), None)
+                yield (
+                    first if first is not None else [ScoredOutput(score=0.0, output="")]
+                )
 
     async def async_infer(
         self,
@@ -235,7 +237,8 @@ class HybridLanguageModel(BaseLanguageModel):
         for idx, prompt in enumerate(batch_prompts):
             rule_result = self._try_rules(prompt)
             if rule_result.hit:
-                self._rule_hits += 1
+                with self._counter_lock:
+                    self._rule_hits += 1
                 resolved[idx] = [
                     ScoredOutput(
                         score=rule_result.confidence,
@@ -243,7 +246,8 @@ class HybridLanguageModel(BaseLanguageModel):
                     )
                 ]
             else:
-                self._llm_fallbacks += 1
+                with self._counter_lock:
+                    self._llm_fallbacks += 1
                 fallback_indices.append(idx)
                 fallback_prompts.append(prompt)
 
