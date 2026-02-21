@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.2 (2026-02-21)
+
+### Bug Fixes
+
+- Ensure thread-safe operation of rule-hit and LLM-fallback counters; update version to 1.0.1
+  ([`37bd24a`](https://github.com/IgnatG/langextract-hybrid-llm-regex/commit/37bd24a413f20f04832e41fbc8ebe0e92b58cea8))
+
+
 ## v1.0.1 (2026-02-21)
 
 ### Bug Fixes
