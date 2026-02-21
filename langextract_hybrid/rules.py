@@ -199,8 +199,23 @@ class RuleConfig:
         min_confidence: Minimum confidence threshold for rule
             results. Only used when ``fallback_on_low_confidence``
             is ``True``.
+        text_extractor: Optional callable that extracts the
+            document text portion from a full prompt string.
+            When set, rules receive only the extracted text
+            instead of the entire prompt (which may include
+            instructions and examples that could cause false
+            matches).  ``None`` (default) passes the full
+            prompt to rules unchanged.
+        output_formatter: Optional callable that post-processes
+            rule output strings before returning them as
+            ``ScoredOutput``.  Useful for conforming rule
+            output to the format expected by downstream
+            pipeline stages.  ``None`` (default) returns
+            rule output as-is.
     """
 
     rules: list[ExtractionRule] = field(default_factory=list)
     fallback_on_low_confidence: bool = False
     min_confidence: float = 0.8
+    text_extractor: Callable[[str], str] | None = None
+    output_formatter: Callable[[str], str] | None = None

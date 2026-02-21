@@ -387,6 +387,94 @@ class TestHybridProviderAsync:
 
 
 # ---------------------------------------------------------------------------
+# text_extractor and output_formatter tests
+# ---------------------------------------------------------------------------
+
+
+class TestTextExtractor:
+    """Tests for text_extractor in RuleConfig."""
+
+    def test_rules_receive_extracted_text(self) -> None:
+        """Rules should only see the extracted text, not the full prompt."""
+        llm = _StubLLM()
+        rule = RegexRule(
+            r"Date:\s*(?P<date>\d{4}-\d{2}-\d{2})",
+        )
+
+        def extract_doc(prompt: str) -> str:
+            # Simulate extracting only the document section
+            marker = "---DOCUMENT---\n"
+            idx = prompt.find(marker)
+            if idx >= 0:
+                return prompt[idx + len(marker) :]
+            return prompt
+
+        hybrid = HybridLanguageModel(
+            model_id="hybrid/test",
+            inner=llm,
+            rule_config=RuleConfig(
+                rules=[rule],
+                text_extractor=extract_doc,
+            ),
+        )
+        # The rule pattern exists in the instructions, but
+        # text_extractor should strip instructions
+        prompt = (
+            "Instructions: Extract dates like Date: 2000-01-01\n"
+            "---DOCUMENT---\n"
+            "Contract Date: 2026-06-15"
+        )
+        results = list(hybrid.infer([prompt]))
+        parsed = json.loads(results[0][0].output or "")
+        # Should match the document date, not the instruction
+        assert parsed["date"] == "2026-06-15"
+        assert llm.call_count == 0
+
+    def test_without_extractor_matches_full_prompt(self) -> None:
+        """Without text_extractor, rules match the full prompt."""
+        llm = _StubLLM()
+        rule = RegexRule(
+            r"Example:\s*(?P<val>\w+)",
+        )
+        hybrid = HybridLanguageModel(
+            model_id="hybrid/test",
+            inner=llm,
+            rule_config=RuleConfig(rules=[rule]),
+        )
+        # This matches the instruction example, not document
+        prompt = "Example: WRONG\nActual data here"
+        results = list(hybrid.infer([prompt]))
+        parsed = json.loads(results[0][0].output or "")
+        assert parsed["val"] == "WRONG"
+
+
+class TestOutputFormatter:
+    """Tests for output_formatter in RuleConfig."""
+
+    def test_formatter_transforms_output(self) -> None:
+        llm = _StubLLM()
+        rule = RegexRule(
+            r"(?P<amount>\d+)",
+        )
+
+        def format_output(raw: str) -> str:
+            data = json.loads(raw)
+            return json.dumps({"extracted_amount": int(data["amount"])})
+
+        hybrid = HybridLanguageModel(
+            model_id="hybrid/test",
+            inner=llm,
+            rule_config=RuleConfig(
+                rules=[rule],
+                output_formatter=format_output,
+            ),
+        )
+        results = list(hybrid.infer(["Pay 500"]))
+        parsed = json.loads(results[0][0].output or "")
+        assert parsed["extracted_amount"] == 500
+
+
+# ---------------------------------------------------------------------------
 # Plugin registration test
 # ---------------------------------------------------------------------------
 

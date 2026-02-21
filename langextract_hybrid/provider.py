@@ -113,15 +113,24 @@ class HybridLanguageModel(BaseLanguageModel):
     def _try_rules(self, prompt: str) -> RuleResult:
         """Evaluate rules against a prompt, return first hit.
 
+        When a ``text_extractor`` is configured in the rule config,
+        rules receive only the extracted document text rather than
+        the full prompt (which may include instructions/examples
+        that could cause false regex matches).
+
         Parameters:
-            prompt: The prompt text.
+            prompt: The full prompt text.
 
         Returns:
             A ``RuleResult`` from the first matching rule, or a
             miss result if no rule matched.
         """
+        rule_input = prompt
+        if self._rule_config.text_extractor is not None:
+            rule_input = self._rule_config.text_extractor(prompt)
+
         for rule in self._rule_config.rules:
-            result = rule.evaluate(prompt)
+            result = rule.evaluate(rule_input)
             if result.hit:
                 # Check confidence threshold
                 if (
@@ -135,6 +144,17 @@ class HybridLanguageModel(BaseLanguageModel):
                         self._rule_config.min_confidence,
                     )
                     continue
+                # Apply output formatter if configured
+                if (
+                    self._rule_config.output_formatter is not None
+                    and result.output is not None
+                ):
+                    formatted = self._rule_config.output_formatter(result.output)
+                    return RuleResult(
+                        hit=True,
+                        output=formatted,
+                        confidence=result.confidence,
+                    )
                 return result
         return RuleResult(hit=False)
 
