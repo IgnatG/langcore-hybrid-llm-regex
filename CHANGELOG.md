@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.1.0 (2026-02-23)
+
+### Features
+
+- Updated the folder structure
+  ([`3694c8b`](https://github.com/IgnatG/langcore-hybrid-llm-regex/commit/3694c8b601525157adb44a6f2d77c8e5ab6b3fcd))
+
+
 ## v1.0.4 (2026-02-21)
 
 ### Bug Fixes
